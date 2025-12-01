@@ -1,0 +1,50 @@
+from transformers import BertTokenizerFast, BertForMaskedLM, DataCollatorForLanguageModeling
+from transformers import Trainer, TrainingArguments
+from datasets import load_dataset
+
+# 1) Carregar um dataset de texto não supervisionado
+# Exemplo: wikitext-2 (texto cru, sem rótulos)
+dataset = load_dataset("wikitext", "wikitext-2-raw-v1")
+
+# 2) Carregar o tokenizer e modelo encoder-only (BERT)
+tokenizer = BertTokenizerFast.from_pretrained("bert-base-uncased")
+model = BertForMaskedLM.from_pretrained("bert-base-uncased")
+
+# 3) Tokenizar o dataset
+def tokenize(batch):
+    return tokenizer(batch['text'], truncation=True, padding="max_length", max_length=128)
+
+tokenized_ds = dataset.map(tokenize, batched=True, remove_columns=["text"])
+
+# 4) Criar data collator com Masked Language Modeling
+data_collator = DataCollatorForLanguageModeling(
+    tokenizer=tokenizer,
+    mlm=True,
+    mlm_probability=0.15
+)
+
+# 5) Configuração do treinamento
+training_args = TrainingArguments(
+    output_dir="./encoder-only-mlm",
+    overwrite_output_dir=True,
+    num_train_epochs=1,
+    per_device_train_batch_size=16,
+    save_steps=500,
+    save_total_limit=2,
+    logging_steps=50,
+)
+
+# 6) Trainer
+trainer = Trainer(
+    model=model,
+    args=training_args,
+    train_dataset=tokenized_ds["train"],
+    data_collator=data_collator,
+)
+
+# 7) Treinar
+trainer.train()
+
+# 8) Salvar modelo final
+trainer.save_model("./encoder-only-mlm-final")
+tokenizer.save_pretrained("./encoder-only-mlm-final")
